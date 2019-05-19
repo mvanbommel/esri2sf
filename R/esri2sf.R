@@ -4,6 +4,8 @@
 #' @param url string for service url. ex) \url{https://sampleserver1.arcgisonline.com/ArcGIS/rest/services/Demographics/ESRI_Census_USA/MapServer/3}
 #' @param outFields vector of fields you want to include. default is '*' for all fields
 #' @param where string for where condition. default is 1=1 for all rows
+#' @param limit maximum number of records to return. deafult is 100
+#' @param offset entries to skip in return. default is 0
 #' @param token. string for authentication token if needed.
 #' @return sf dataframe
 #' @note When accessing services with multiple layers, the layer number must be specified at the end of the service url
@@ -19,11 +21,12 @@
 #' df <- esri2sf(url, outFields=outFields, where=where)
 #' plot(df)
 #' @export
-esri2sf <- function(url, outFields=c("*"), where="1=1", token='') {
+esri2sf <- function(url, outFields=c("*"), where="1=1", limit=100, offset=0, token='') {
   library(httr)
   library(jsonlite)
   library(sf)
   library(dplyr)
+ 
   layerInfo <- jsonlite::fromJSON(
     httr::content(
       httr::POST(
@@ -35,17 +38,15 @@ esri2sf <- function(url, outFields=c("*"), where="1=1", token='') {
       as="text"
       )
     )
-  print(layerInfo$type)
   geomType <- layerInfo$geometryType
-  print(geomType)
   queryUrl <- paste(url, "query", sep="/")
-  esriFeatures <- getEsriFeatures(queryUrl, outFields, where, token)
+  esriFeatures <- getEsriFeatures(queryUrl, outFields, where, limit, offset, token)
   simpleFeatures <- esri2sfGeom(esriFeatures, geomType)
   return(simpleFeatures)
 }
 
-getEsriFeatures <- function(queryUrl, fields, where, token='') {
-  ids <- getObjectIds(queryUrl, where, token)
+getEsriFeatures <- function(queryUrl, fields, where, limit, offset, token='') {
+  ids <- getObjectIds(queryUrl, where, limit, offset, token)
   if(is.null(ids)){
     warning("No records match the search critera")
     return()
@@ -56,12 +57,14 @@ getEsriFeatures <- function(queryUrl, fields, where, token='') {
   return(merged)
 }
 
-getObjectIds <- function(queryUrl, where, token=''){
+getObjectIds <- function(queryUrl, where, limit, offset, token=''){
   # create Simple Features from ArcGIS servers json response
   query <- list(
     where=where,
     returnIdsOnly="true",
     token=token,
+    resultRecordCount=as.character(limit),
+    resultOffset=as.character(offset),
     f="json"
   )
   responseRaw <- httr::content(
