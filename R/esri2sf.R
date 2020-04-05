@@ -4,6 +4,7 @@
 #' @param url string for service url. ex) \url{https://sampleserver1.arcgisonline.com/ArcGIS/rest/services/Demographics/ESRI_Census_USA/MapServer/3}
 #' @param outFields vector of fields you want to include. default is '*' for all fields
 #' @param where string for where condition. default is 1=1 for all rows
+#' @param additional_paraters list of additional parameters to pass to the query
 #' @param limit maximum number of records to return. deafult is 100
 #' @param offset entries to skip in return. default is 0
 #' @param token. string for authentication token if needed.
@@ -21,12 +22,18 @@
 #' df <- esri2sf(url, outFields=outFields, where=where)
 #' plot(df)
 #' @export
-esri2sf <- function(url, outFields=c("*"), where="1=1", limit=100, offset=0, token='') {
+esri2sf <- function(url,
+                    outFields=c("*"),
+                    where="1=1",
+                    additional_parameters=list(),
+                    limit=100,
+                    offset=0,
+                    token='') {
   library(httr)
   library(jsonlite)
   library(sf)
   library(dplyr)
- 
+
   layerInfo <- jsonlite::fromJSON(
     httr::content(
       httr::POST(
@@ -34,19 +41,19 @@ esri2sf <- function(url, outFields=c("*"), where="1=1", limit=100, offset=0, tok
         query=list(f="json", token=token),
         encode="form",
         config = httr::config(ssl_verifypeer = FALSE)
-        ),
+      ),
       as="text"
-      )
     )
+  )
   geomType <- layerInfo$geometryType
   queryUrl <- paste(url, "query", sep="/")
-  esriFeatures <- getEsriFeatures(queryUrl, outFields, where, limit, offset, token)
+  esriFeatures <- getEsriFeatures(queryUrl, outFields, where, additional_parameters, limit, offset, token)
   simpleFeatures <- esri2sfGeom(esriFeatures, geomType)
   return(simpleFeatures)
 }
 
-getEsriFeatures <- function(queryUrl, fields, where, limit, offset, token='') {
-  ids <- getObjectIds(queryUrl, where, limit, offset, token)
+getEsriFeatures <- function(queryUrl, fields, where, additional_parameters, limit, offset, token='') {
+  ids <- getObjectIds(queryUrl, where, additional_parameters, limit, offset, token)
   if(is.null(ids)){
     warning("No records match the search critera")
     return()
@@ -57,7 +64,7 @@ getEsriFeatures <- function(queryUrl, fields, where, limit, offset, token='') {
   return(merged)
 }
 
-getObjectIds <- function(queryUrl, where, limit, offset, token=''){
+getObjectIds <- function(queryUrl, where, additional_parameters, limit, offset, token=''){
   # create Simple Features from ArcGIS servers json response
   query <- list(
     where=where,
@@ -67,6 +74,7 @@ getObjectIds <- function(queryUrl, where, limit, offset, token=''){
     resultOffset=as.character(offset),
     f="json"
   )
+  query <- append(query, additional_parameters)
   responseRaw <- httr::content(
     httr::POST(
       queryUrl,
@@ -74,7 +82,7 @@ getObjectIds <- function(queryUrl, where, limit, offset, token=''){
       encode="form",
       config = httr::config(ssl_verifypeer = FALSE)),
     as="text"
-    )
+  )
   response <- jsonlite::fromJSON(responseRaw)
   return(response$objectIds)
 }
@@ -94,13 +102,13 @@ getEsriFeaturesByIds <- function(ids, queryUrl, fields, token=''){
       body=query,
       encode="form",
       config = httr::config(ssl_verifypeer = FALSE)
-      ),
+    ),
     as="text"
-    )
+  )
   response <- jsonlite::fromJSON(responseRaw,
-                       simplifyDataFrame = FALSE,
-                       simplifyVector = FALSE,
-                       digits=NA)
+                                 simplifyDataFrame = FALSE,
+                                 simplifyVector = FALSE,
+                                 digits = NA)
   esriJsonFeatures <- response$features
   return(esriJsonFeatures)
 }
@@ -118,16 +126,21 @@ esri2sfGeom <- function(jsonFeats, geomType) {
   }
   # attributes
   atts <- lapply(jsonFeats, '[[', 1) %>%
-          lapply(function(att) lapply(att, function(x) return(ifelse(is.null(x), NA, x))))
+    lapply(function(att) lapply(att, function(x) return(ifelse(is.null(x), NA, x))))
 
   af <- dplyr::bind_rows(lapply(atts, as.data.frame.list, stringsAsFactors=FALSE))
   # geometry + attributes
   df <- sf::st_sf(geoms, af, crs="+init=epsg:4326")
+
   return(df)
 }
 
 esri2sfPoint <- function(features) {
   getPointGeometry <- function(feature) {
+    if (!("geometry" %in% names(feature))) {
+      # Add geometry values if missing
+      feature$geometry = list(x = 1000, y = 1000)
+    }
     return(sf::st_point(unlist(feature$geometry)))
   }
   geoms <- sf::st_sfc(lapply(features, getPointGeometry))
@@ -170,7 +183,7 @@ esri2sfPolyline <- function(features) {
 generateToken <- function(server, uid, pwd='', expiration=5000){
   # generate auth token from GIS server
   if (pwd=='') {
-     pwd <- rstudioapi::askForPassword("pwd")
+    pwd <- rstudioapi::askForPassword("pwd")
   }
   query <- list(
     username=uid,
@@ -195,12 +208,12 @@ generateToken <- function(server, uid, pwd='', expiration=5000){
 #' @export
 generateOAuthToken <- function(clientId,clientSecret,expiration=5000) {
 
-    query=list(client_id=clientId,
-               client_secret=clientSecret,
-               expiration=expiration,
-               grant_type="client_credentials")
-    
-    r <- httr::POST("https://www.arcgis.com/sharing/rest/oauth2/token",body=query)
-    token <- content(r,type = "application/json")$access_token
-    return(token)
+  query=list(client_id=clientId,
+             client_secret=clientSecret,
+             expiration=expiration,
+             grant_type="client_credentials")
+
+  r <- httr::POST("https://www.arcgis.com/sharing/rest/oauth2/token",body=query)
+  token <- content(r,type = "application/json")$access_token
+  return(token)
 }
