@@ -2,7 +2,7 @@ Package: esri2sf
 Type: Package
 Title: Create Simple Features from ArcGIS Server REST API
 Version: 0.1.1
-Authors@R: person("Matt", "van Bommel", email = "matthewvanbommel.com",
+Authors@R: person("Matt", "van Bommel", email = "matthew.vbommel@gmail.com",
                   role = c("aut", "cre"))
 Description: This package enables you to scrape geographic features 
     directly from ArcGIS servers REST API into R as simple features. 
