@@ -38,7 +38,7 @@ esri2sf <- function(url,
     httr::content(
       httr::POST(
         url,
-        query=list(f="json", token=token),
+        query=list(f="json"),
         encode="form",
         config = httr::config(ssl_verifypeer = FALSE)
       ),
@@ -46,6 +46,7 @@ esri2sf <- function(url,
     )
   )
   geomType <- layerInfo$geometryType
+
   queryUrl <- paste(url, "query", sep="/")
   esriFeatures <- getEsriFeatures(queryUrl, outFields, where, additional_parameters, limit, offset, token)
   simpleFeatures <- esri2sfGeom(esriFeatures, geomType)
@@ -75,6 +76,7 @@ getObjectIds <- function(queryUrl, where, additional_parameters, limit, offset, 
     f="json"
   )
   query <- append(query, additional_parameters)
+
   responseRaw <- httr::content(
     httr::POST(
       queryUrl,
